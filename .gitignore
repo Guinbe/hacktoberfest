@@ -32,6 +32,11 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
+/.env
+/api.txt
 
 # Symbolication related
 app.*.symbols

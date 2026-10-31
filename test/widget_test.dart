@@ -29,6 +29,50 @@ void main() {
     expect(find.text('Se connecter'), findsOneWidget);
   });
 
+  testWidgets('offline search and tutor answer locally', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const SabiApp());
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Passer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connexion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Accueil'), findsWidgets);
+    expect(find.text('Hors ligne'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Thalès');
+    await tester.pumpAndSettle();
+    expect(find.text('Théorème de Thalès'), findsWidgets);
+
+    await tester.tap(find.text('Théorème de Thalès').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Le chapitre'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Retour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Accueil'), findsWidgets);
+    await tester.tap(find.text('Tuteur').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Ton amie en maths'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Explique le théorème de Thalès',
+    );
+    await tester.tap(find.byTooltip('Envoyer la question'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('On regarde les triangles ensemble 💛'), findsOneWidget);
+    expect(find.textContaining('(MN) // (BC)'), findsOneWidget);
+    expect(find.text('Réponse préparée sur ce téléphone.'), findsOneWidget);
+  });
+
   testWidgets('desktop dashboard links to competencies and remediation', (
     tester,
   ) async {
@@ -96,7 +140,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Voir mon parcours'));
     await tester.pumpAndSettle();
-    expect(find.text('Ton parcours'), findsOneWidget);
+    expect(find.text('Bonjour,'), findsOneWidget);
+    expect(find.text('Mboa-24'), findsOneWidget);
     expect(tester.takeException(), isNull, reason: 'home layout');
 
     await tester.tap(find.text('Les identités remarquables'));

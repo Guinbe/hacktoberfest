@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:hacktoberfest/tutor_service.dart';
 
 void main() => runApp(const SabiApp());
 
@@ -109,18 +110,30 @@ class SabiPrototype extends StatefulWidget {
   State<SabiPrototype> createState() => _SabiPrototypeState();
 }
 
+typedef TutorAnswer = ({
+  String title,
+  String explanation,
+  String example,
+  String reason,
+  List<String> steps,
+  String hint,
+});
+
 class _SabiPrototypeState extends State<SabiPrototype> {
   SabiScreen _screen = SabiScreen.splash;
   final List<SabiScreen> _history = [];
   final TextEditingController _answerController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _tutorInputController = TextEditingController();
+  final TutorService _tutorService = TutorService();
   Timer? _splashTimer;
   bool _hasSized = false;
-  bool _isOnline = true;
+  bool _isOnline = false;
   bool _isSignup = true;
   bool _consentGiven = true;
+  bool _cloudTutorConsentGiven = false;
+  bool _isAskingTutor = false;
   bool _isCorrect = false;
-  bool _isSyncing = false;
-  bool _syncError = false;
   bool _showHint = false;
   bool _showSolution = false;
   bool _largeText = false;
@@ -129,6 +142,22 @@ class _SabiPrototypeState extends State<SabiPrototype> {
   bool _dataSaver = false;
   bool _lowStorage = false;
   bool _studentAdded = false;
+  String _searchQuery = '';
+  String? _tutorStatus;
+  String _tutorQuestion = 'Je ne comprends pas la factorisation.';
+  TutorAnswer _tutorAnswer = (
+    title: 'On reprend tout doucement 💛',
+    explanation:
+        'Factoriser, c’est l’inverse de développer. On transforme une addition ou une soustraction en multiplication.',
+    example: '6x + 12 = 6(x + 2)',
+    reason: 'Pourquoi ? Car 6 se retrouve dans les deux morceaux.',
+    steps: [
+      'Repère ce qui se répète.',
+      'Mets-le devant les parenthèses.',
+      'Vérifie en développant.',
+    ],
+    hint: 'Factorise 4x + 8. Qu’est-ce qui se répète ?',
+  );
   String _historyFilter = 'Tout';
   String _studentFilter = 'Toute la classe';
   String _studentSearch = '';
@@ -166,6 +195,315 @@ class _SabiPrototypeState extends State<SabiPrototype> {
 
   String get _exerciseHint =>
       '$_exerciseSquare, c’est $_exerciseFactor². As-tu reconnu a² − b² ?';
+
+  TutorAnswer _answerFor(String question) {
+    final normalized = _normalizeText(question);
+
+    if (normalized.contains('thales') ||
+        normalized.contains('triangle') ||
+        normalized.contains('parallele')) {
+      return (
+        title: 'On regarde les triangles ensemble 💛',
+        explanation:
+            'Avec une droite parallèle à un côté d’un triangle, les longueurs correspondantes sont proportionnelles.',
+        example: 'Si (MN) // (BC), alors AM/AB = AN/AC.',
+        reason:
+            'Les deux triangles ont la même forme, même si leur taille change.',
+        steps: [
+          'Vérifie que les points sont alignés.',
+          'Repère les droites parallèles.',
+          'Écris les rapports des côtés correspondants.',
+        ],
+        hint: 'Commence par noter les points alignés et les parallèles.',
+      );
+    }
+
+    if (normalized.contains('equation') ||
+        normalized.contains('inequation') ||
+        normalized.contains('resoudre')) {
+      return (
+        title: 'Une équation, ça se résout pas à pas 💛',
+        explanation:
+            'Le but est de laisser x tout seul. Pour garder l’égalité, fais la même opération des deux côtés.',
+        example: 'x + 5 = 12  →  x = 12 − 5  →  x = 7',
+        reason: 'On vérifie : 7 + 5 = 12. C’est juste !',
+        steps: [
+          'Repère l’opération faite avec x.',
+          'Fais l’opération inverse des deux côtés.',
+          'Remplace x dans l’équation pour vérifier.',
+        ],
+        hint: 'Quelle opération permet d’annuler le + 5 ?',
+      );
+    }
+
+    if (normalized.contains('identite') ||
+        normalized.contains('a2') ||
+        normalized.contains('carre') ||
+        normalized.contains('difference de deux')) {
+      return (
+        title: 'Reconnaissons l’identité remarquable 💛',
+        explanation:
+            'Une différence de deux carrés se transforme en produit : le carré du premier terme moins le carré du second.',
+        example: 'a² − b² = (a − b)(a + b)',
+        reason: 'Par exemple, x² − 25 = (x − 5)(x + 5), car 25 = 5².',
+        steps: [
+          'Repère deux carrés séparés par un signe moins.',
+          'Trouve la racine carrée de chaque terme.',
+          'Écris les deux parenthèses avec − puis +.',
+        ],
+        hint: 'Dans x² − 49, quel nombre au carré donne 49 ?',
+      );
+    }
+
+    if (normalized.contains('factor') ||
+        normalized.contains('developp') ||
+        normalized.contains('parenthese')) {
+      return (
+        title: 'On reprend la factorisation tout doucement 💛',
+        explanation:
+            'Factoriser, c’est l’inverse de développer. On transforme une addition ou une soustraction en multiplication.',
+        example: '6x + 12 = 6(x + 2)',
+        reason: 'Le 6 se retrouve dans les deux morceaux : 6x et 12.',
+        steps: [
+          'Repère le facteur commun.',
+          'Mets-le devant les parenthèses.',
+          'Vérifie en développant.',
+        ],
+        hint: 'Dans 4x + 8, quel nombre divise 4x et 8 ?',
+      );
+    }
+
+    return (
+      title: 'Cherchons ensemble 💛',
+      explanation:
+          'Je peux t’aider avec la factorisation, les identités remarquables, les équations et le théorème de Thalès.',
+      example: 'Essaie : x² − 25 = (x − 5)(x + 5)',
+      reason:
+          'Choisis une notion ou reformule ta question avec un mot du cours.',
+      steps: [
+        'Choisis le chapitre qui te bloque.',
+        'Repère les nombres et les signes importants.',
+        'Avançons une étape à la fois.',
+      ],
+      hint: 'Tu peux écrire « équation », « factorisation » ou « Thalès ». ',
+    );
+  }
+
+  String _normalizeText(String value) => value
+      .toLowerCase()
+      .replaceAll('é', 'e')
+      .replaceAll('è', 'e')
+      .replaceAll('ê', 'e')
+      .replaceAll('à', 'a')
+      .replaceAll('â', 'a')
+      .replaceAll('î', 'i')
+      .replaceAll('ï', 'i')
+      .replaceAll('ô', 'o')
+      .replaceAll('ù', 'u')
+      .replaceAll('û', 'u')
+      .replaceAll('ç', 'c');
+
+  Future<void> _askTutor(String question) async {
+    final trimmed = question.trim();
+    if (trimmed.isEmpty || _isAskingTutor) return;
+
+    if (TutorService.isConfigured && !_cloudTutorConsentGiven) {
+      final consent = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Envoyer ta question à Gemma ?'),
+          content: const Text(
+            'Ta question sera envoyée au serveur Sabi puis au service d’IA de Google pour préparer une réponse. '
+            'N’écris pas ton nom, ton adresse, le nom de ton école ni d’autre information personnelle. '
+            'Tu peux annuler et garder une réponse préparée sur ce téléphone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Rester ici'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Envoyer ma question'),
+            ),
+          ],
+        ),
+      );
+      if (consent != true || !mounted) return;
+      _cloudTutorConsentGiven = true;
+    }
+
+    setState(() {
+      _tutorQuestion = trimmed;
+      _tutorAnswer = _answerFor(trimmed);
+      _tutorStatus = TutorService.isConfigured
+          ? 'Je prépare une explication…'
+          : 'Réponse préparée sur ce téléphone.';
+      _isAskingTutor = TutorService.isConfigured;
+      _tutorInputController.clear();
+    });
+
+    if (!TutorService.isConfigured) return;
+
+    try {
+      final response = await _tutorService.ask(trimmed);
+      if (!mounted) return;
+      setState(() {
+        _tutorAnswer = (
+          title: 'Une explication pour toi 💛',
+          explanation: response,
+          example: '',
+          reason: '',
+          steps: const [],
+          hint: _answerFor(trimmed).hint,
+        );
+        _tutorStatus = 'Réponse générée par Gemma.';
+        _isOnline = true;
+        _isAskingTutor = false;
+      });
+    } on TutorServiceException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _tutorStatus =
+            '${error.message} Je te propose une réponse préparée hors ligne.';
+        _isOnline = false;
+        _isAskingTutor = false;
+      });
+    }
+  }
+
+  Widget _homeSearch() {
+    final entries = [
+      (
+        title: 'Factorisation',
+        detail: 'Facteur commun, identités remarquables',
+        keywords: 'factorisation facteur commun',
+        chapter: 'Factorisation',
+        destination: SabiScreen.chapter,
+      ),
+      (
+        title: 'Identités remarquables',
+        detail: 'a² − b² et développement',
+        keywords: 'identités remarquables carre difference',
+        chapter: 'Factorisation',
+        destination: SabiScreen.lesson,
+      ),
+      (
+        title: 'Équations et inéquations',
+        detail: 'Isoler x et vérifier une solution',
+        keywords: 'equation inéquation resoudre x',
+        chapter: 'Équations et inéquations',
+        destination: SabiScreen.chapter,
+      ),
+      (
+        title: 'Théorème de Thalès',
+        detail: 'Triangles, parallèles et longueurs',
+        keywords: 'thales triangle parallèle proportionnalité',
+        chapter: 'Théorème de Thalès',
+        destination: SabiScreen.chapter,
+      ),
+    ];
+    final query = _normalizeText(_searchQuery.trim());
+    final matches = query.isEmpty
+        ? const []
+        : entries
+              .where(
+                (entry) =>
+                    _normalizeText(entry.title).contains(query) ||
+                    _normalizeText(entry.detail).contains(query) ||
+                    _normalizeText(entry.keywords).contains(query),
+              )
+              .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _searchController,
+          onChanged: (value) => setState(() => _searchQuery = value),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Chercher une leçon ou une notion',
+            prefixIcon: const Icon(Icons.search_rounded, color: forest),
+            suffixIcon: _searchQuery.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Effacer la recherche',
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+            filled: true,
+            fillColor: Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(17),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        if (query.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          if (matches.isEmpty)
+            _whiteCard(
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Aucun résultat dans les leçons hors ligne.',
+                        style: TextStyle(color: muted),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        _tutorInputController.text = _searchQuery;
+                        _navigate(SabiScreen.tutor);
+                      },
+                      child: const Text('Demander à Sabi'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...matches.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(19),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(19),
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: paleGreen,
+                        child: Icon(Icons.menu_book_rounded, color: forest),
+                      ),
+                      title: Text(
+                        entry.title,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(entry.detail),
+                      trailing: const Icon(
+                        Icons.chevron_right_rounded,
+                        color: muted,
+                      ),
+                      onTap: () {
+                        _selectedChapter = entry.chapter;
+                        _navigate(entry.destination);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
 
   bool get _isStudentTab => const {
     SabiScreen.home,
@@ -222,6 +560,9 @@ class _SabiPrototypeState extends State<SabiPrototype> {
   void dispose() {
     _splashTimer?.cancel();
     _answerController.dispose();
+    _searchController.dispose();
+    _tutorInputController.dispose();
+    _tutorService.close();
     super.dispose();
   }
 
@@ -885,8 +1226,14 @@ class _SabiPrototypeState extends State<SabiPrototype> {
       children: [
         if (!_isOnline)
           InfoBanner(
-            icon: Icons.wifi_off_rounded,
-            text: 'Tu es hors ligne. Tes leçons restent avec toi.',
+            icon: TutorService.isConfigured
+                ? Icons.cloud_queue_rounded
+                : Icons.wifi_off_rounded,
+            text: TutorService.isConfigured
+                ? _tutorStatus == null
+                      ? 'Gemma sera testée à ta première question.'
+                      : 'Gemma n’est pas joignable. Tes leçons restent avec toi.'
+                : 'Tu es hors ligne. Tes leçons restent avec toi.',
             color: const Color(0xFFFFF2D5),
             action: TextButton(
               onPressed: () => _navigate(SabiScreen.offline),
@@ -916,6 +1263,8 @@ class _SabiPrototypeState extends State<SabiPrototype> {
             const OwlAvatar(size: 58),
           ],
         ),
+        const SizedBox(height: 17),
+        _homeSearch(),
         const SizedBox(height: 19),
         _continueCard(),
         const SizedBox(height: 18),
@@ -1889,14 +2238,14 @@ class _SabiPrototypeState extends State<SabiPrototype> {
       padding: const EdgeInsets.fromLTRB(17, 7, 17, 18),
       children: [
         Row(
-          children: const [
+          children: [
             OwlAvatar(size: 55),
-            SizedBox(width: 11),
+            const SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Sabi',
                     style: TextStyle(
                       color: forestDark,
@@ -1904,27 +2253,75 @@ class _SabiPrototypeState extends State<SabiPrototype> {
                       fontSize: 19,
                     ),
                   ),
-                  Text(
+                  const Text(
                     'Ton amie en maths',
                     style: TextStyle(color: muted, fontSize: 13),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.circle, color: forest, size: 11),
-            SizedBox(width: 5),
-            Text('Prêt·e', style: TextStyle(color: forest, fontSize: 12)),
+            Icon(
+              _isOnline ? Icons.circle : Icons.circle_outlined,
+              color: _isOnline
+                  ? forest
+                  : TutorService.isConfigured
+                  ? const Color(0xFFC17A14)
+                  : muted,
+              size: 11,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _isOnline
+                  ? 'Gemma prête'
+                  : TutorService.isConfigured
+                  ? _isAskingTutor
+                        ? 'Connexion…'
+                        : _tutorStatus == null
+                        ? 'À tester'
+                        : 'Indisponible'
+                  : 'Mode local',
+              style: TextStyle(
+                color: _isOnline
+                    ? forest
+                    : TutorService.isConfigured
+                    ? const Color(0xFFC17A14)
+                    : muted,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
         if (!_isOnline) ...[
           const SizedBox(height: 12),
-          const InfoBanner(
-            icon: Icons.wifi_off_rounded,
+          InfoBanner(
+            icon: TutorService.isConfigured
+                ? Icons.info_outline_rounded
+                : Icons.wifi_off_rounded,
             text:
-                'Je réponds avec tes leçons téléchargées. Les questions difficiles attendent le retour du réseau.',
-            color: Color(0xFFFFF2D5),
+                _tutorStatus ??
+                (TutorService.isConfigured
+                    ? 'Gemma sera testée à ta première question.'
+                    : 'Gemma n’est pas configurée. Je peux proposer une explication préparée sur ce téléphone.'),
+            color: const Color(0xFFFFF2D5),
           ),
         ],
+        if (TutorService.isConfigured && _isOnline) ...[
+          const SizedBox(height: 12),
+          const InfoBanner(
+            icon: Icons.cloud_outlined,
+            text:
+                'Gemma est activé. Ta question part au serveur Sabi puis à Google. Évite les informations personnelles.',
+            color: paleGreen,
+          ),
+        ],
+        if (_tutorStatus != null && _isOnline)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _tutorStatus!,
+              style: const TextStyle(color: muted, fontSize: 12),
+            ),
+          ),
         const SizedBox(height: 15),
         Align(
           alignment: Alignment.centerRight,
@@ -1937,8 +2334,8 @@ class _SabiPrototypeState extends State<SabiPrototype> {
                 19,
               ).copyWith(bottomRight: const Radius.circular(5)),
             ),
-            child: const Text(
-              'Je ne comprends pas la factorisation.',
+            child: Text(
+              _tutorQuestion,
               style: TextStyle(color: Colors.white, fontSize: 15),
             ),
           ),
@@ -1957,35 +2354,53 @@ class _SabiPrototypeState extends State<SabiPrototype> {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
-                'On reprend tout doucement 💛',
-                style: TextStyle(
+                _tutorAnswer.title,
+                style: const TextStyle(
                   color: forest,
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              SizedBox(height: 7),
-              Text(
-                'Factoriser, c’est l’inverse de développer. On transforme une '
-                'addition ou une soustraction en multiplication.',
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Par exemple :  6x + 12 = 6(x + 2)',
-                style: TextStyle(
-                  fontFamily: 'serif',
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: forestDark,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Pourquoi ? Car 6 se retrouve dans les deux morceaux.',
-                style: TextStyle(color: muted),
-              ),
+              const SizedBox(height: 7),
+              if (_isAskingTutor)
+                const Row(
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: forest,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text('Sabi cherche une explication…'),
+                  ],
+                )
+              else ...[
+                SelectableText(_tutorAnswer.explanation),
+                if (_tutorAnswer.example.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _tutorAnswer.example,
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: forestDark,
+                    ),
+                  ),
+                ],
+                if (_tutorAnswer.reason.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _tutorAnswer.reason,
+                    style: const TextStyle(color: muted),
+                  ),
+                ],
+              ],
             ],
           ),
         ),
@@ -1995,8 +2410,8 @@ class _SabiPrototypeState extends State<SabiPrototype> {
             padding: const EdgeInsets.all(15),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
+              children: [
+                const Text(
                   'Ma méthode en 3 étapes',
                   style: TextStyle(
                     color: forestDark,
@@ -2004,10 +2419,12 @@ class _SabiPrototypeState extends State<SabiPrototype> {
                     fontSize: 16,
                   ),
                 ),
-                SizedBox(height: 11),
-                StepLine(number: '1', text: 'Repère ce qui se répète.'),
-                StepLine(number: '2', text: 'Mets-le devant les parenthèses.'),
-                StepLine(number: '3', text: 'Vérifie en développant.'),
+                const SizedBox(height: 11),
+                for (var index = 0; index < _tutorAnswer.steps.length; index++)
+                  StepLine(
+                    number: '${index + 1}',
+                    text: _tutorAnswer.steps[index],
+                  ),
               ],
             ),
           ),
@@ -2028,6 +2445,7 @@ class _SabiPrototypeState extends State<SabiPrototype> {
           children: [
             _quickChip('Explique plus simplement', Icons.sentiment_satisfied),
             _quickChip('Exemple concret', Icons.lightbulb_outline),
+            _quickChip('Écouter l’explication', Icons.volume_up_outlined),
             _quickChip('Niveau plus avancé', Icons.trending_up),
           ],
         ),
@@ -2087,7 +2505,7 @@ class _SabiPrototypeState extends State<SabiPrototype> {
                 ),
               ),
               const SizedBox(height: 3),
-              const Text('Factorise 4x + 8. Qu’est-ce qui se répète ?'),
+              Text(_tutorAnswer.hint),
               TextButton(
                 onPressed: () => _navigate(SabiScreen.exercise),
                 child: const Text('Indice : regarde les deux nombres'),
@@ -2132,16 +2550,11 @@ class _SabiPrototypeState extends State<SabiPrototype> {
     backgroundColor: Colors.white,
     side: const BorderSide(color: line),
     onPressed: () {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            label == 'Écouter l’explication'
-                ? 'L’explication audio se prépare.'
-                : 'Bien sûr. Je reprends avec un exemple encore plus simple.',
-          ),
-          backgroundColor: forest,
-        ),
-      );
+      if (label == 'Écouter l’explication') {
+        setState(() => _audioPlaying = !_audioPlaying);
+        return;
+      }
+      _askTutor('$label : $_tutorQuestion');
     },
   );
 
@@ -2587,11 +3000,11 @@ class _SabiPrototypeState extends State<SabiPrototype> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '1 question en attente',
+                        'Questions traitées hors ligne',
                         style: TextStyle(fontWeight: FontWeight.w800),
                       ),
                       Text(
-                        'Elle partira quand tu seras connecté·e.',
+                        'Les réponses viennent des leçons de l’application.',
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
                     ],
@@ -2603,58 +3016,26 @@ class _SabiPrototypeState extends State<SabiPrototype> {
         ),
         const SizedBox(height: 13),
         PrimaryButton(
-          label: _isSyncing
-              ? 'Synchronisation…'
-              : _isOnline
-              ? 'Synchroniser mes progrès'
-              : 'Réessayer la connexion',
-          icon: _isSyncing ? Icons.hourglass_bottom : Icons.sync_rounded,
-          enabled: !_isSyncing,
-          onPressed: _syncProgress,
+          label: 'Vérifier le mode hors ligne',
+          icon: Icons.wifi_off_rounded,
+          onPressed: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Mode hors ligne actif. Rien n’est envoyé.'),
+                backgroundColor: forest,
+              ),
+            );
+          },
         ),
-        if (_syncError)
-          InfoBanner(
-            icon: Icons.error_outline_rounded,
-            text:
-                'Pas de réseau pour le moment. Tes progrès restent sur le téléphone.',
-            color: const Color(0xFFFCE9DE),
-            action: TextButton(
-              onPressed: _syncProgress,
-              child: const Text('Réessayer'),
-            ),
-          ),
         const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: () => setState(() => _isOnline = !_isOnline),
-          icon: Icon(_isOnline ? Icons.wifi_off_rounded : Icons.wifi_rounded),
-          label: Text(
-            _isOnline ? 'Simuler le mode hors ligne' : 'Revenir en ligne',
-          ),
+        const Text(
+          'La synchronisation sera ajoutée dans une prochaine version.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: muted, fontSize: 12),
         ),
       ],
     ),
   );
-
-  Future<void> _syncProgress() async {
-    setState(() {
-      _isSyncing = true;
-      _syncError = false;
-    });
-    await Future<void>.delayed(const Duration(milliseconds: 650));
-    if (!mounted) return;
-    setState(() {
-      _isSyncing = false;
-      _syncError = !_isOnline;
-    });
-    if (_isOnline) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tes progrès sont synchronisés. Tout est à jour !'),
-          backgroundColor: forest,
-        ),
-      );
-    }
-  }
 
   Widget _downloadTile(String title, double progress) => Container(
     decoration: BoxDecoration(
@@ -4646,24 +5027,38 @@ class _SabiPrototypeState extends State<SabiPrototype> {
               color: const Color(0xFFFFF2D5),
               child: InkWell(
                 onTap: () => _navigate(SabiScreen.offline),
-                child: const SizedBox(
+                child: SizedBox(
                   height: 37,
                   child: Center(
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.wifi_off_rounded,
+                          TutorService.isConfigured
+                              ? _isAskingTutor || _tutorStatus == null
+                                    ? Icons.cloud_queue_rounded
+                                    : Icons.wifi_off_rounded
+                              : Icons.wifi_off_rounded,
                           size: 16,
                           color: Color(0xFF684700),
                         ),
                         SizedBox(width: 7),
-                        Text(
-                          'Hors ligne • tes leçons restent disponibles',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF684700),
-                            fontSize: 12,
+                        Flexible(
+                          child: Text(
+                            TutorService.isConfigured
+                                ? _isAskingTutor
+                                      ? 'Connexion à Gemma…'
+                                      : _tutorStatus == null
+                                      ? 'Gemma à tester • tes leçons restent disponibles'
+                                      : 'Gemma indisponible • tes leçons restent disponibles'
+                                : 'Hors ligne • tes leçons restent disponibles',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF684700),
+                              fontSize: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -4673,9 +5068,46 @@ class _SabiPrototypeState extends State<SabiPrototype> {
               ),
             ),
           Expanded(child: body),
+          if (_screen == SabiScreen.tutor) _tutorComposer(),
           if (_isStudentTab) _bottomNav(),
         ],
       ),
+    ),
+  );
+
+  Widget _tutorComposer() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _tutorInputController,
+            textInputAction: TextInputAction.send,
+            onSubmitted: _askTutor,
+            decoration: InputDecoration(
+              hintText: 'Écris ta question…',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: line),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filled(
+          tooltip: 'Envoyer la question',
+          onPressed: () => _askTutor(_tutorInputController.text),
+          icon: const Icon(Icons.send_rounded),
+          style: IconButton.styleFrom(
+            backgroundColor: forest,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(54, 54),
+          ),
+        ),
+      ],
     ),
   );
 
@@ -5002,21 +5434,50 @@ class _SabiPrototypeState extends State<SabiPrototype> {
       );
 
   Widget _connectionChip() {
-    final color = _isOnline ? forest : const Color(0xFFC17A14);
+    final isConfigured = TutorService.isConfigured;
+    final color = _isOnline
+        ? forest
+        : isConfigured
+        ? const Color(0xFFC17A14)
+        : muted;
     return Padding(
       padding: const EdgeInsets.only(right: 3, left: 8),
       child: Tooltip(
-        message: _isOnline ? 'Connecté' : 'Hors ligne',
+        message: _isOnline
+            ? 'Gemma disponible'
+            : isConfigured
+            ? _isAskingTutor
+                  ? 'Connexion à Gemma…'
+                  : _tutorStatus == null
+                  ? 'Gemma sera testée à la première question'
+                  : 'Gemma indisponible'
+            : 'Mode local',
         child: Row(
           children: [
             Icon(
-              _isOnline ? Icons.circle : Icons.wifi_off_rounded,
+              _isOnline
+                  ? Icons.circle
+                  : isConfigured
+                  ? _isAskingTutor
+                        ? Icons.cloud_sync_rounded
+                        : _tutorStatus == null
+                        ? Icons.cloud_queue_rounded
+                        : Icons.wifi_off_rounded
+                  : Icons.wifi_off_rounded,
               color: color,
               size: 11,
             ),
             const SizedBox(width: 5),
             Text(
-              _isOnline ? 'En ligne' : 'Hors ligne',
+              _isOnline
+                  ? 'En ligne'
+                  : isConfigured
+                  ? _isAskingTutor
+                        ? 'Connexion…'
+                        : _tutorStatus == null
+                        ? 'À tester'
+                        : 'Erreur'
+                  : 'Hors ligne',
               style: TextStyle(
                 color: color,
                 fontSize: 11,
